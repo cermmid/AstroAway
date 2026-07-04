@@ -4,12 +4,14 @@ import {
   BufferGeometry,
   CanvasTexture,
   Color,
+  DoubleSide,
   Float32BufferAttribute,
-  LineSegments,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
+  Points,
+  PointsMaterial,
   Quaternion,
   Scene,
   ShaderMaterial,
@@ -25,7 +27,11 @@ import { mulberry32 } from '../world-gen/noise';
 import type { BaseScene } from './BaseScene';
 
 const DEG = Math.PI / 180;
-const TUNNEL_LEN = 260;
+// The streak tunnel wraps around the rider: it reaches TUNNEL_BEHIND meters
+// past the camera, so looking around never reveals an end — streaks fly by
+// and keep going behind you (both ends fade out instead of clipping).
+const TUNNEL_LEN = 320;
+const TUNNEL_BEHIND = 95;
 const ORIENT_END = 1.4;
 const CRUISE_END = 7.0;
 const FLASH_END = 7.9;
@@ -40,7 +46,7 @@ export class TravelScene implements BaseScene {
   readonly scene = new Scene();
 
   private ctx!: AppContext;
-  private streaks!: LineSegments<BufferGeometry, ShaderMaterial>;
+  private streaks!: Mesh<BufferGeometry, ShaderMaterial>;
   private destSprite!: Mesh<PlaneGeometry, MeshBasicMaterial>;
   private flash!: Mesh<SphereGeometry, MeshBasicMaterial>;
   private vignette!: Mesh;
@@ -51,9 +57,10 @@ export class TravelScene implements BaseScene {
 
   init(ctx: AppContext): void {
     this.ctx = ctx;
-    this.scene.background = new Color(0x000005);
+    this.scene.background = new Color(0x02030c);
     this.streaks = buildStreaks();
     this.scene.add(this.streaks);
+    this.scene.add(buildStarBackdrop());
 
     this.destSprite = buildDestSprite();
     this.scene.add(this.destSprite);
@@ -106,7 +113,10 @@ export class TravelScene implements BaseScene {
     this.targetQuat.setFromRotationMatrix(
       new Matrix4().lookAt(new Vector3(0, 0, 0), dir, new Vector3(0, 1, 0)),
     );
-    this.destSprite.position.copy(dir).multiplyScalar(400);
+    // Aim the whole tunnel down the flight direction, so looking ahead gives
+    // the radial-burst view and the streaks pass by on all sides.
+    this.streaks.quaternion.copy(this.targetQuat);
+    this.destSprite.position.copy(dir).multiplyScalar(400).add(new Vector3(0, 1.6, 0));
     this.destSprite.lookAt(0, 1.6, 0);
     this.vignette.visible = this.ctx.renderer.xr.isPresenting;
   }
@@ -164,30 +174,81 @@ function smoothstep(a: number, b: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-function buildStreaks(): LineSegments<BufferGeometry, ShaderMaterial> {
-  const n = 1300;
+// Reference-image palette: cyans and blues dominate, punctuated by orange
+// and amber streaks; weights sum implicitly via repetition.
+const STREAK_PALETTE: Array<[number, number, number]> = [
+  [0.4, 0.85, 1.0],
+  [0.4, 0.85, 1.0],
+  [0.3, 0.55, 1.0],
+  [0.3, 0.55, 1.0],
+  [0.92, 0.96, 1.0],
+  [1.0, 0.6, 0.22],
+  [1.0, 0.6, 0.22],
+  [1.0, 0.78, 0.42],
+];
+
+/**
+ * Streaks as camera-facing ribbons (one indexed mesh, one draw call):
+ * varied widths and colors, soft edges, tails fading out, and both tunnel
+ * ends dissolving smoothly so the ride surrounds the rider.
+ */
+function buildStreaks(): Mesh<BufferGeometry, ShaderMaterial> {
+  const n = 1200;
   const rand = mulberry32(1234);
-  const positions = new Float32Array(n * 2 * 3);
-  const tails = new Float32Array(n * 2);
-  const radii = new Float32Array(n * 2);
+  const positions = new Float32Array(n * 4 * 3);
+  const tangents = new Float32Array(n * 4 * 2);
+  const tails = new Float32Array(n * 4);
+  const sides = new Float32Array(n * 4);
+  const widths = new Float32Array(n * 4);
+  const colors = new Float32Array(n * 4 * 3);
+  const lenMuls = new Float32Array(n * 4);
+  const index = new Uint32Array(n * 6);
+
   for (let i = 0; i < n; i++) {
     const theta = rand() * Math.PI * 2;
-    const r = 2.5 + rand() * 42;
+    const r = 3 + rand() * 46;
     const x = Math.cos(theta) * r;
-    const y = Math.sin(theta) * r + 1.6;
+    const y = Math.sin(theta) * r; // centered; the mesh is placed at eye height
     const z = -rand() * TUNNEL_LEN;
-    for (const v of [0, 1]) {
-      positions[(i * 2 + v) * 3] = x;
-      positions[(i * 2 + v) * 3 + 1] = y;
-      positions[(i * 2 + v) * 3 + 2] = z;
-      tails[i * 2 + v] = v;
-      radii[i * 2 + v] = r;
+    // Ribbon spans the tangent direction, so it always faces the tunnel axis.
+    const tx = -Math.sin(theta);
+    const ty = Math.cos(theta);
+    // Mostly hairlines, a few thick "hero" streaks; wider when farther out.
+    const w = (0.03 + rand() * rand() * rand() * 0.5) * (0.5 + r / 40);
+    const c = STREAK_PALETTE[Math.floor(rand() * STREAK_PALETTE.length)];
+    const glow = 0.55 + rand() * 0.65;
+    const lenMul = 0.45 + rand() * 1.4;
+    for (let v = 0; v < 4; v++) {
+      const k = i * 4 + v;
+      positions[k * 3] = x;
+      positions[k * 3 + 1] = y;
+      positions[k * 3 + 2] = z;
+      tangents[k * 2] = tx;
+      tangents[k * 2 + 1] = ty;
+      tails[k] = v < 2 ? 0 : 1;
+      sides[k] = v % 2 === 0 ? -1 : 1;
+      widths[k] = w;
+      colors[k * 3] = c[0] * glow;
+      colors[k * 3 + 1] = c[1] * glow;
+      colors[k * 3 + 2] = c[2] * glow;
+      lenMuls[k] = lenMul;
     }
+    const b = i * 4;
+    index.set([b, b + 1, b + 2, b + 2, b + 1, b + 3], i * 6);
   }
+
   const geo = new BufferGeometry();
   geo.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geo.setAttribute('aTangent', new Float32BufferAttribute(tangents, 2));
   geo.setAttribute('aTail', new Float32BufferAttribute(tails, 1));
-  geo.setAttribute('aRadius', new Float32BufferAttribute(radii, 1));
+  geo.setAttribute('aSide', new Float32BufferAttribute(sides, 1));
+  geo.setAttribute('aWidth', new Float32BufferAttribute(widths, 1));
+  geo.setAttribute('aColor', new Float32BufferAttribute(colors, 3));
+  geo.setAttribute('aLenMul', new Float32BufferAttribute(lenMuls, 1));
+  geo.setIndex([...index]);
+
+  const L = TUNNEL_LEN.toFixed(1);
+  const B = TUNNEL_BEHIND.toFixed(1);
   const material = new ShaderMaterial({
     uniforms: {
       uDist: { value: 0 },
@@ -197,35 +258,86 @@ function buildStreaks(): LineSegments<BufferGeometry, ShaderMaterial> {
     vertexShader: /* glsl */ `
       uniform float uDist;
       uniform float uStreak;
+      attribute vec2 aTangent;
       attribute float aTail;
-      attribute float aRadius;
-      varying float vFade;
+      attribute float aSide;
+      attribute float aWidth;
+      attribute vec3 aColor;
+      attribute float aLenMul;
+      varying vec3 vColor;
+      varying float vT;
+      varying float vEdge;
+      varying float vEnv;
       void main() {
         vec3 p = position;
-        float z = mod(p.z + uDist, ${TUNNEL_LEN.toFixed(1)}) - ${TUNNEL_LEN.toFixed(1)};
-        z -= aTail * uStreak;
-        p.z = z;
-        vFade = (1.0 - clamp(-z / ${TUNNEL_LEN.toFixed(1)}, 0.0, 1.0))
-              * (1.0 - aTail * 0.85)
-              * smoothstep(2.0, 6.0, aRadius);
-        gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+        // Recycle along the axis; the tunnel spans [-(LEN-BEHIND), +BEHIND].
+        float head = mod(p.z + uDist, ${L}) - (${L} - ${B});
+        float z = head - aTail * uStreak * aLenMul;
+        // Dissolve at both ends instead of clipping.
+        float far = -(${L} - ${B});
+        vEnv = smoothstep(far, far + 60.0, z) * (1.0 - smoothstep(${B} - 40.0, ${B}, z));
+        vec2 xy = p.xy + aTangent * aSide * aWidth;
+        vColor = aColor;
+        vT = aTail;
+        vEdge = aSide;
+        // modelMatrix carries the tunnel's flight-direction orientation.
+        gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(xy, z, 1.0);
       }
     `,
     fragmentShader: /* glsl */ `
       uniform float uOpacity;
-      varying float vFade;
+      varying vec3 vColor;
+      varying float vT;
+      varying float vEdge;
+      varying float vEnv;
       void main() {
-        vec3 col = mix(vec3(0.55, 0.8, 1.0), vec3(1.0), vFade);
-        gl_FragColor = vec4(col, vFade * uOpacity);
+        float body = pow(1.0 - vT, 1.6);          // tail fades out
+        float core = 1.0 + 2.2 * pow(1.0 - vT, 9.0); // hot head
+        float soft = 1.0 - vEdge * vEdge;         // soft ribbon edges
+        float a = uOpacity * vEnv * body * soft;
+        if (a < 0.004) discard;
+        gl_FragColor = vec4(vColor * core, a);
       }
     `,
     transparent: true,
     blending: AdditiveBlending,
     depthWrite: false,
+    side: DoubleSide,
   });
-  const lines = new LineSegments(geo, material);
-  lines.frustumCulled = false;
-  return lines;
+  const mesh = new Mesh(geo, material);
+  mesh.position.set(0, 1.6, 0); // pivot at the rider's head
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
+/** Faint distant stars so the warp has a backdrop, as in the reference. */
+function buildStarBackdrop(): Points {
+  const n = 900;
+  const rand = mulberry32(777);
+  const positions = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const u = rand() * 2 - 1;
+    const phi = rand() * Math.PI * 2;
+    const s = Math.sqrt(1 - u * u);
+    positions[i * 3] = Math.cos(phi) * s * 480;
+    positions[i * 3 + 1] = u * 480 + 1.6;
+    positions[i * 3 + 2] = Math.sin(phi) * s * 480;
+  }
+  const geo = new BufferGeometry();
+  geo.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  const points = new Points(
+    geo,
+    new PointsMaterial({
+      color: 0x9db8de,
+      size: 1.7,
+      sizeAttenuation: false,
+      transparent: true,
+      opacity: 0.75,
+      depthWrite: false,
+    }),
+  );
+  points.frustumCulled = false;
+  return points;
 }
 
 function buildDestSprite(): Mesh<PlaneGeometry, MeshBasicMaterial> {
