@@ -1,10 +1,8 @@
 import {
-  BufferAttribute,
   Color,
   DirectionalLight,
   HemisphereLight,
   Mesh,
-  MeshStandardMaterial,
   PlaneGeometry,
   Ray,
   Scene,
@@ -17,9 +15,11 @@ import type { AppContext } from '../core/App';
 import { registerDebug } from '../core/debug';
 import { projectToScreen } from '../ui/project';
 import type { World } from '../data/schema';
-import { noise2 } from '../world-gen/noise';
+import { MilkyWay } from '../sky/MilkyWay';
 import { SkyDome } from '../sky/SkyDome';
 import { StarField } from '../sky/StarField';
+import { buildSand, buildSurf } from './beach/shore';
+import { buildSilhouettes } from './beach/silhouettes';
 import { StarPicker, type Pickable } from '../sky/StarPicker';
 import { CanvasPanel } from '../ui/CanvasPanel';
 import { StarLabel } from '../ui/StarLabel';
@@ -42,6 +42,8 @@ export class BeachScene implements BaseScene {
   private ctx!: AppContext;
   private starField!: StarField;
   private ocean!: Mesh<PlaneGeometry, ShaderMaterial>;
+  private sand!: Mesh<PlaneGeometry, ShaderMaterial>;
+  private surf!: Mesh<PlaneGeometry, ShaderMaterial>;
   private destinations: Destination[] = [];
   private picker!: StarPicker<Destination>;
   private confirm: CanvasPanel | null = null;
@@ -52,11 +54,16 @@ export class BeachScene implements BaseScene {
     this.ctx = ctx;
     this.scene.add(new SkyDome('#01020a', '#10294a'));
     this.starField = new StarField(ctx.catalog);
+    this.starField.add(new MilkyWay());
     this.scene.add(this.starField);
 
     this.ocean = buildOcean();
     this.scene.add(this.ocean);
-    this.scene.add(buildSand());
+    this.sand = buildSand();
+    this.scene.add(this.sand);
+    this.surf = buildSurf();
+    this.scene.add(this.surf);
+    this.scene.add(buildSilhouettes());
 
     this.scene.add(new HemisphereLight(0x22395e, 0x0b0a07, 0.55));
     const dir = new DirectionalLight(0x8fb4e8, 0.14);
@@ -147,6 +154,8 @@ export class BeachScene implements BaseScene {
     const lstRad = localSiderealTime(this.ctx.getNow(), loc.lonDeg);
     this.starField.setOrientation(latRad, lstRad);
     this.ocean.material.uniforms.uTime.value = elapsed;
+    this.sand.material.uniforms.uTime.value = elapsed;
+    this.surf.material.uniforms.uTime.value = elapsed;
 
     const ray = this.ctx.input.ray;
     const hoveredDest = ray && !this.confirm ? this.picker.pick(ray)?.payload : null;
@@ -245,24 +254,3 @@ function buildOcean(): Mesh<PlaneGeometry, ShaderMaterial> {
   return mesh;
 }
 
-function buildSand(): Mesh {
-  const geo = new PlaneGeometry(500, 130, 64, 24);
-  geo.rotateX(-Math.PI / 2);
-  const pos = geo.attributes.position as BufferAttribute;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getZ(i);
-    // Gentle dune rise away from the waterline (shore near z = -25).
-    const slope = (z + 25) * 0.015 - 0.5;
-    const bumps = noise2(x * 0.05, z * 0.05, 7) * 0.12;
-    pos.setY(i, slope + bumps);
-  }
-  geo.computeVertexNormals();
-  const mesh = new Mesh(
-    geo,
-    new MeshStandardMaterial({ color: 0x27231d, roughness: 1, metalness: 0 }),
-  );
-  mesh.position.z = 40; // plane spans z in [-25, 105]
-  mesh.name = 'sand';
-  return mesh;
-}

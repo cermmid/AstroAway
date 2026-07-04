@@ -16,6 +16,9 @@ try {
   for (const [name, query] of [
     ['beach-north', `scene=beach&${FIXED_QS}`],
     ['beach-arcturus', `scene=beach&${FIXED_QS}&yaw=245&pitch=35`],
+    ['beach-shore', `scene=beach&${FIXED_QS}&yaw=0&pitch=-9`],
+    ['beach-west', `scene=beach&${FIXED_QS}&yaw=290&pitch=6`],
+    ['beach-milkyway', `scene=beach&${FIXED_QS}&yaw=170&pitch=42`],
     ['travel', `scene=travel&${FIXED_QS}`],
     ['world-arcturus', `scene=arcturus&${FIXED_QS}`],
   ]) {
