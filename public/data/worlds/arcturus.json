@@ -1,0 +1,91 @@
+{
+  "id": "arcturus",
+  "type": "world",
+  "name": "Świat Arkturian",
+  "star": {
+    "name": "Arcturus",
+    "hyg": 69451,
+    "raHours": 14.2612,
+    "decDeg": 19.1824,
+    "distanceLy": 36.7,
+    "spectral": "K1.5 III (pomarańczowy olbrzym)",
+    "constellation": "Wolarz (Boötes)"
+  },
+  "race": {
+    "name": "Arkturianie",
+    "dimension": "5. gęstość / 5. wymiar",
+    "appearance": "Smukłe, niebieskoskóre istoty humanoidalne, ok. 1–1,2 m wzrostu, duże migdałowe oczy, delikatna świetlista aura",
+    "traits": [
+      "telepatia i komunikacja poprzez świadomość",
+      "uzdrawianie energią i światłem",
+      "technologia oparta na krysztale i częstotliwości",
+      "praca w służbie ewolucji innych cywilizacji"
+    ],
+    "lore": [
+      {
+        "heading": "Przegląd",
+        "text": "Według przekazów ezoterycznych Arkturianie należą do najbardziej zaawansowanych cywilizacji naszej galaktyki. Ich domem jest system pomarańczowego olbrzyma Arktura w gwiazdozbiorze Wolarza, ok. 36,7 lat świetlnych od Ziemi. Opisywani są jako istoty piątej gęstości, które dawno wykroczyły poza ograniczenia fizycznej formy i działają na poziomie czystej świadomości oraz światła."
+      },
+      {
+        "heading": "Wygląd i natura",
+        "text": "Przekazy opisują ich jako drobne, smukłe istoty o niebieskawej skórze i wielkich, ciemnych, migdałowych oczach, poruszające się z gracją, jakby nie podlegały grawitacji. Nie komunikują się mową — porozumiewają się telepatycznie, a ich obecność odczuwana jest jako fala spokoju i bezwarunkowej miłości. Nie potrzebują pożywienia w naszym rozumieniu; czerpią energię bezpośrednio ze światła swojej gwiazdy."
+      },
+      {
+        "heading": "Społeczeństwo i technologia",
+        "text": "Cywilizacja Arkturian ma być zorganizowana wokół świątyń-kryształów, które gromadzą, przetwarzają i przesyłają energię gwiazdy. Nie istnieje tam hierarchia władzy — decyzje podejmowane są kolektywnie, poprzez zestrojenie świadomości. Ich statki, w tym legendarna Atena, opisywane są jako żywe struktury światła reagujące na myśl. Technologia i duchowość stanowią u nich jedno."
+      },
+      {
+        "heading": "Kontakt z Ziemią",
+        "text": "Edgar Cayce wspominał Arktura jako 'bramę' — punkt przejścia świadomości podróżującej między światami. Norma Milanovich w książce 'My, Arkturianie' opisała ich misję wspierania Ziemi w przejściu do wyższej gęstości. Arkturianie mają działać jako opiekunowie i uzdrowiciele, nie ingerując bezpośrednio, lecz inspirując poprzez sny, medytacje i subtelne impulsy świadomości."
+      }
+    ],
+    "sources": [
+      "Edgar Cayce — odczyty (Arcturus jako brama świadomości)",
+      "Norma J. Milanovich — „We, the Arcturians” (1990)",
+      "przekazy channelingowe ruchu New Age"
+    ]
+  },
+  "scene": {
+    "palette": {
+      "primary": "#4fc3f7",
+      "secondary": "#7e57c2",
+      "emissive": "#00e5ff"
+    },
+    "sky": {
+      "zenith": "#0a1a3f",
+      "horizon": "#2a6a8f",
+      "sunColor": "#ffa050",
+      "sunElevationDeg": 9,
+      "sunAzimuthDeg": 195,
+      "sunAngularDeg": 6
+    },
+    "terrain": {
+      "seed": 42,
+      "amplitude": 7,
+      "frequency": 0.014,
+      "size": 420,
+      "color": "#16224a",
+      "colorHigh": "#2c3f7a"
+    },
+    "structures": {
+      "kind": "crystals",
+      "count": 64,
+      "minH": 2,
+      "maxH": 20,
+      "color": "#2a4a7a",
+      "emissive": "#00e5ff",
+      "emissiveIntensity": 0.55
+    },
+    "atmosphere": {
+      "fogColor": "#14304a",
+      "fogDensity": 0.006,
+      "particles": "motes"
+    },
+    "models": [],
+    "ambience": "drone"
+  },
+  "panel": {
+    "title": "Arcturus — Arkturianie",
+    "showStarFacts": true
+  }
+}

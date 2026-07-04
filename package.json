@@ -1,0 +1,29 @@
+{
+  "name": "astroaway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WebXR experience: stand on a night beach under an astronomically accurate sky and fly to the worlds of other races. MVP: the Arcturian homeworld.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "stars:fetch": "node scripts/fetch-stars.mjs",
+    "stars:build": "node scripts/build-stars.mjs",
+    "test": "vitest run",
+    "verify:shots": "node scripts/verify/screenshot.mjs",
+    "verify:sky": "node scripts/verify/check-sky.mjs"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "@types/three": "^0.170.0",
+    "astronomy-engine": "^2.1.19",
+    "playwright-core": "^1.49.0",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0",
+    "vitest": "^2.1.0"
+  }
+}
