@@ -2,14 +2,22 @@
 // the sea and a couple of palms at the beach edge. Canvas-textured billboards
 // — the user never walks on the beach, so there is no parallax to betray them.
 import {
+  BufferAttribute,
   CanvasTexture,
   Group,
+  IcosahedronGeometry,
+  InstancedMesh,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
+  MeshStandardMaterial,
   PlaneGeometry,
+  Quaternion,
   SRGBColorSpace,
+  Vector3,
 } from 'three';
-import { mulberry32 } from '../../world-gen/noise';
+import { mulberry32, noise2 } from '../../world-gen/noise';
+import { sandHeight } from './shore';
 
 export function buildSilhouettes(): Group {
   const group = new Group();
@@ -23,12 +31,15 @@ export function buildSilhouettes(): Group {
   cliff.renderOrder = 1;
   group.add(cliff);
 
+  group.add(buildRocks());
+
   const palmTex = new CanvasTexture(makePalmTexture());
   palmTex.colorSpace = SRGBColorSpace;
   const palms: Array<[number, number, number, number, boolean]> = [
-    // [x, z, height, lean, mirrored]
-    [-21, -13, 9.5, 0.06, false],
-    [-30, 3, 7.5, -0.04, true],
+    // [x, z, height, lean, mirrored] — one right overhead, the rest layering depth
+    [-8.5, -3, 11, 0.07, false],
+    [-15, 5, 8.5, -0.05, true],
+    [-26, -9, 7, 0.04, false],
   ];
   for (const [x, z, h, lean, mirror] of palms) {
     const mat = new MeshBasicMaterial({
@@ -47,6 +58,56 @@ export function buildSilhouettes(): Group {
     group.add(palm);
   }
   return group;
+}
+
+/**
+ * Real 3D rocks: a cluster at the waterline and single boulders on the sand,
+ * one InstancedMesh of noise-displaced icosahedrons lit by the scene lights.
+ */
+function buildRocks(): InstancedMesh {
+  const geo = new IcosahedronGeometry(1, 2);
+  const pos = geo.attributes.position as BufferAttribute;
+  const v = new Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const bump = 1 + 0.32 * noise2(v.x * 1.7 + 9, v.y * 1.7 + v.z * 1.3, 3);
+    v.multiplyScalar(bump);
+    pos.setXYZ(i, v.x, v.y * 0.62, v.z); // squashed like surf-worn boulders
+  }
+  geo.computeVertexNormals();
+  const material = new MeshStandardMaterial({
+    color: 0x3a4150,
+    roughness: 0.82,
+    metalness: 0.05,
+    flatShading: true,
+  });
+  const placements: Array<[number, number, number]> = [
+    // [x, z, radius] — a group standing in the surf to the right, loners on the sand
+    [10.5, -13, 1.7],
+    [12.8, -11.5, 1.1],
+    [9.2, -10.8, 0.7],
+    [14.5, -14.5, 0.9],
+    [-6, -8.5, 0.8],
+    [4.5, -2, 0.5],
+    [-11.5, 1.5, 0.6],
+  ];
+  const mesh = new InstancedMesh(geo, material, placements.length);
+  const rand = mulberry32(4242);
+  const m = new Matrix4();
+  const q = new Quaternion();
+  const p = new Vector3();
+  const s = new Vector3();
+  placements.forEach(([x, z, r], i) => {
+    const ground = Math.min(sandHeight(x, z), -0.3);
+    p.set(x, ground + r * 0.28, z);
+    q.setFromAxisAngle(new Vector3(0, 1, 0), rand() * Math.PI * 2);
+    s.set(r * (0.85 + rand() * 0.35), r, r * (0.85 + rand() * 0.35));
+    m.compose(p, q, s);
+    mesh.setMatrixAt(i, m);
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.name = 'rocks';
+  return mesh;
 }
 
 function billboardMaterial(canvas: HTMLCanvasElement): MeshBasicMaterial {
@@ -111,7 +172,7 @@ function makePalmTexture(): HTMLCanvasElement {
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#0b1511'; // a hair above the sky so the crown still reads
+  ctx.fillStyle = '#111e18'; // a hair above the sky so the crown still reads
   const rand = mulberry32(97);
 
   // Trunk: filled tapered polygon along a gentle curve; crown near (300, 150).
@@ -178,5 +239,16 @@ function makePalmTexture(): HTMLCanvasElement {
     ctx.arc(crown.x - 8 + i * 9, crown.y + 6, 7, 0, Math.PI * 2);
     ctx.fill();
   }
+  // Faint moonlit rim along the trunk's lit side.
+  ctx.strokeStyle = 'rgba(150, 180, 220, 0.22)';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let t = 0; t <= 1.001; t += 0.05) {
+    const p = spine(t);
+    const w = (14 - 9 * t) / 2;
+    if (t === 0) ctx.moveTo(p.x - w, p.y);
+    else ctx.lineTo(p.x - w, p.y);
+  }
+  ctx.stroke();
   return canvas;
 }

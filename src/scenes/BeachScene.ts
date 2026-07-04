@@ -65,9 +65,10 @@ export class BeachScene implements BaseScene {
     this.scene.add(this.surf);
     this.scene.add(buildSilhouettes());
 
-    this.scene.add(new HemisphereLight(0x22395e, 0x0b0a07, 0.55));
-    const dir = new DirectionalLight(0x8fb4e8, 0.14);
-    dir.position.set(0, 1, 0.3);
+    // "Moonlight" without a visible moon: enough to read sand and rocks.
+    this.scene.add(new HemisphereLight(0x2c4a76, 0x17120c, 0.85));
+    const dir = new DirectionalLight(0xbcd4f2, 0.5);
+    dir.position.set(-0.4, 1, 0.35);
     this.scene.add(dir);
 
     const pickables: Pickable<Destination>[] = [];
@@ -95,7 +96,8 @@ export class BeachScene implements BaseScene {
 
   enter(): void {
     this.ctx.desktop.walkEnabled = false;
-    this.ctx.cameraRig.position.set(0, 0, 0);
+    // A few meters up the beach: dry sand in the foreground, surf ahead.
+    this.ctx.cameraRig.position.set(0, 0, 6);
     this.ctx.ambience.setMode('ocean');
     this.offSelect = this.ctx.input.onSelect((ray) => this.onSelect(ray));
     this.ctx.hud?.setLocation(this.ctx.getLocation());
@@ -202,7 +204,9 @@ class ConfirmPanel extends CanvasPanel {
 }
 
 function buildOcean(): Mesh<PlaneGeometry, ShaderMaterial> {
-  const geo = new PlaneGeometry(4000, 4000, 96, 96);
+  // Water only seaward of the beach (z < -10) — a full-scene plane would
+  // poke its wave crests up through the sand.
+  const geo = new PlaneGeometry(4000, 2000, 96, 96);
   geo.rotateX(-Math.PI / 2);
   const material = new ShaderMaterial({
     uniforms: {
@@ -215,10 +219,11 @@ function buildOcean(): Mesh<PlaneGeometry, ShaderMaterial> {
       uniform float uTime;
       varying vec3 vWorld;
       void main() {
-        vec3 p = position;
-        p.y += sin(p.x * 0.021 + uTime * 0.6) * 0.22
-             + sin(p.z * 0.017 - uTime * 0.5) * 0.18;
-        vec4 w = modelMatrix * vec4(p, 1.0);
+        vec4 w = modelMatrix * vec4(position, 1.0);
+        // Swell dies out approaching the shoreline; the surf strip takes over.
+        float deep = 1.0 - smoothstep(-42.0, -14.0, w.z);
+        w.y += (sin(w.x * 0.021 + uTime * 0.6) * 0.22
+              + sin(w.z * 0.017 - uTime * 0.5) * 0.18) * deep;
         vWorld = w.xyz;
         gl_Position = projectionMatrix * viewMatrix * w;
       }
@@ -249,7 +254,7 @@ function buildOcean(): Mesh<PlaneGeometry, ShaderMaterial> {
     `,
   });
   const mesh = new Mesh(geo, material);
-  mesh.position.y = -0.3;
+  mesh.position.set(0, -0.3, -1010); // spans z in [-2010, -10]
   mesh.name = 'ocean';
   return mesh;
 }

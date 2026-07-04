@@ -64,7 +64,7 @@ export function buildSand(): Mesh<PlaneGeometry, ShaderMaterial> {
   const material = new ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
-      uDry: { value: new Color('#4a4438') },
+      uDry: { value: new Color('#6b6250') },
       uSky: { value: new Color('#2a5178') },
     },
     vertexShader: /* glsl */ `
@@ -88,9 +88,11 @@ export function buildSand(): Mesh<PlaneGeometry, ShaderMaterial> {
       void main() {
         // Grain + gentle patchiness.
         float grain = vnoise(vWorld.xz * 3.1) * 0.6 + vnoise(vWorld.xz * 13.0) * 0.4;
-        vec3 col = uDry * (0.85 + 0.3 * grain);
+        vec3 col = uDry * (0.8 + 0.4 * grain);
         // Fake moonlit shading from the normal.
-        col *= 0.6 + 0.34 * max(vNormal.y, 0.0);
+        col *= 0.72 + 0.4 * max(vNormal.y, 0.0);
+        // Salt-and-pepper glitter of moonlit grains.
+        col += vec3(0.75, 0.85, 1.0) * step(0.982, vnoise(vWorld.xz * 57.0)) * 0.3;
 
         // Wet band: from the waterline up to wherever the last swash reached.
         float reach = -10.0;
@@ -98,12 +100,14 @@ export function buildSand(): Mesh<PlaneGeometry, ShaderMaterial> {
           vec2 f = waveFront(i, uTime, vWorld.x);
           reach = max(reach, f.x + 1.2 * (1.0 - f.y));
         }
-        float wet = smoothstep(reach + 2.8, reach - 0.6, vWorld.z);
-        col *= 1.0 - 0.5 * wet;
-        // Sky sheen on the wet film.
+        float wet = smoothstep(reach + 1.2, reach - 1.4, vWorld.z);
+        col *= 1.0 - 0.42 * wet;
+        // Patchy sky sheen on the wet film; tamed at grazing angles so the
+        // whole strip never washes out into a flat blue slab.
         vec3 viewDir = normalize(cameraPosition - vWorld);
         float fres = pow(1.0 - max(dot(viewDir, vNormal), 0.0), 3.5);
-        col += uSky * fres * wet * (0.55 + 0.2 * vnoise(vWorld.xz * 1.5));
+        float patches = smoothstep(0.35, 0.8, vnoise(vWorld.xz * 1.3));
+        col += uSky * min(fres, 0.55) * wet * patches * 0.6;
         gl_FragColor = vec4(col, 1.0);
       }
     `,
