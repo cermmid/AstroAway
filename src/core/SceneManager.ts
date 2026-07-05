@@ -1,3 +1,4 @@
+import type { Texture } from 'three';
 import type { BaseScene } from '../scenes/BaseScene';
 import type { AppContext } from './App';
 import { registerDebug } from './debug';
@@ -23,6 +24,14 @@ export class SceneManager {
 
   register(scene: BaseScene): void {
     this.scenes.set(scene.id, scene);
+  }
+
+  /** Set an IBL environment map on every registered scene. */
+  applyEnvironment(env: Texture, intensity: number): void {
+    for (const s of this.scenes.values()) {
+      s.scene.environment = env;
+      s.scene.environmentIntensity = intensity;
+    }
   }
 
   get activeId(): string {

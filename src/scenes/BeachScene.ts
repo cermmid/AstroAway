@@ -5,8 +5,10 @@ import {
   Mesh,
   PlaneGeometry,
   Ray,
+  RepeatWrapping,
   Scene,
   ShaderMaterial,
+  TextureLoader,
   Vector3,
 } from 'three';
 import { altAzToVector3, raDecToAltAz } from '../astro/coords';
@@ -42,7 +44,7 @@ export class BeachScene implements BaseScene {
   private ctx!: AppContext;
   private starField!: StarField;
   private ocean!: Mesh<PlaneGeometry, ShaderMaterial>;
-  private sand!: Mesh<PlaneGeometry, ShaderMaterial>;
+  private sandTime!: { value: number };
   private surf!: Mesh<PlaneGeometry, ShaderMaterial>;
   private destinations: Destination[] = [];
   private picker!: StarPicker<Destination>;
@@ -59,8 +61,9 @@ export class BeachScene implements BaseScene {
 
     this.ocean = buildOcean();
     this.scene.add(this.ocean);
-    this.sand = buildSand();
-    this.scene.add(this.sand);
+    const sand = buildSand();
+    this.sandTime = sand.timeUniform;
+    this.scene.add(sand.mesh);
     this.surf = buildSurf();
     this.scene.add(this.surf);
     this.scene.add(buildSilhouettes());
@@ -156,7 +159,7 @@ export class BeachScene implements BaseScene {
     const lstRad = localSiderealTime(this.ctx.getNow(), loc.lonDeg);
     this.starField.setOrientation(latRad, lstRad);
     this.ocean.material.uniforms.uTime.value = elapsed;
-    this.sand.material.uniforms.uTime.value = elapsed;
+    this.sandTime.value = elapsed;
     this.surf.material.uniforms.uTime.value = elapsed;
 
     const ray = this.ctx.input.ray;
@@ -208,9 +211,13 @@ function buildOcean(): Mesh<PlaneGeometry, ShaderMaterial> {
   // poke its wave crests up through the sand.
   const geo = new PlaneGeometry(4000, 2000, 96, 96);
   geo.rotateX(-Math.PI / 2);
+  const normals = new TextureLoader().load('textures/waternormals.jpg');
+  normals.wrapS = RepeatWrapping;
+  normals.wrapT = RepeatWrapping;
   const material = new ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
+      uNormals: { value: normals },
       uDeep: { value: new Color('#04131f') },
       uRefl: { value: new Color('#16395c') },
       uHorizon: { value: new Color('#10294a') },
@@ -230,25 +237,29 @@ function buildOcean(): Mesh<PlaneGeometry, ShaderMaterial> {
     `,
     fragmentShader: /* glsl */ `
       uniform float uTime;
+      uniform sampler2D uNormals;
       uniform vec3 uDeep;
       uniform vec3 uRefl;
       uniform vec3 uHorizon;
       varying vec3 vWorld;
+      // Classic two-layer scrolling normal map (three.js waternormals).
+      vec3 waterNormal(vec2 xz) {
+        vec2 n1 = texture2D(uNormals, xz * 0.06 + vec2(uTime * 0.014, uTime * 0.010)).xy * 2.0 - 1.0;
+        vec2 n2 = texture2D(uNormals, xz * 0.013 - vec2(uTime * 0.007, uTime * 0.004)).xy * 2.0 - 1.0;
+        return normalize(vec3(n1.x + n2.x, 2.6, n1.y + n2.y));
+      }
       void main() {
-        vec3 p = vWorld;
-        vec3 nrm = normalize(vec3(
-          sin(p.x * 0.14 + uTime * 0.9) * 0.05 + sin(p.x * 0.032 + p.z * 0.02 + uTime * 0.4) * 0.09,
-          1.0,
-          sin(p.z * 0.18 + uTime * 1.1) * 0.05 + sin(p.z * 0.045 - uTime * 0.5) * 0.09
-        ));
+        vec3 nrm = waterNormal(vWorld.xz);
         vec3 viewDir = normalize(cameraPosition - vWorld);
         float fresnel = pow(1.0 - max(dot(nrm, viewDir), 0.0), 3.0);
         vec3 col = mix(uDeep, uRefl, fresnel);
         float dist = length(vWorld.xz - cameraPosition.xz);
         float fade = smoothstep(250.0, 1600.0, dist);
         col = mix(col, uHorizon, fade);
-        float sp = sin(p.x * 1.9 + uTime * 2.1) * sin(p.z * 2.3 - uTime * 1.6);
-        col += vec3(0.45, 0.65, 0.9) * pow(max(sp, 0.0), 26.0) * 0.4 * (1.0 - fade);
+        // Moon-glint sparkle off the wave facets.
+        vec3 lightDir = normalize(vec3(-0.4, 0.55, 0.35));
+        float glint = pow(max(dot(reflect(-lightDir, nrm), viewDir), 0.0), 60.0);
+        col += vec3(0.7, 0.85, 1.0) * glint * 0.9 * (1.0 - fade);
         gl_FragColor = vec4(col, 1.0);
       }
     `,

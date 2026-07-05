@@ -15,6 +15,7 @@
     "verify:sky": "node scripts/verify/check-sky.mjs"
   },
   "dependencies": {
+    "@pmndrs/assets": "^1.7.0",
     "three": "^0.170.0"
   },
   "devDependencies": {

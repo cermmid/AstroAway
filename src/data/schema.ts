@@ -75,6 +75,12 @@ export interface WorldSceneParams {
   terrain: TerrainParams;
   structures: StructureParams;
   atmosphere: AtmosphereParams;
+  /**
+   * A whole Blender-authored scene (.glb in public/models/). When set, the
+   * procedural terrain and structures are skipped and this file becomes the
+   * world; sky/fog/panel/ambience still come from the JSON params.
+   */
+  sceneFile?: string;
   models?: ModelPlacement[];
   ambience?: 'drone' | 'none';
 }

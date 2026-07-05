@@ -7,9 +7,11 @@ import {
   Color,
   DoubleSide,
   Mesh,
+  MeshStandardMaterial,
   PlaneGeometry,
   ShaderMaterial,
 } from 'three';
+import { bakeSandTextures } from '../../world-gen/bakeTextures';
 import { noise2 } from '../../world-gen/noise';
 
 export const WATERLINE_Z = -11.7;
@@ -52,7 +54,25 @@ const GLSL_FRONTS = /* glsl */ `
   }
 `;
 
-export function buildSand(): Mesh<PlaneGeometry, ShaderMaterial> {
+export interface SandBuild {
+  mesh: Mesh<PlaneGeometry, MeshStandardMaterial>;
+  timeUniform: { value: number };
+}
+
+// GLSL for the wet swash band, injected into MeshStandardMaterial so the
+// sand keeps full PBR lighting (normal/roughness maps, IBL) plus our logic.
+const GLSL_WET = /* glsl */ `
+  float wetFactor(vec3 wp, float t) {
+    float reach = -10.0;
+    for (int i = 0; i < 3; i++) {
+      vec2 f = waveFront(i, t, wp.x);
+      reach = max(reach, f.x + 1.2 * (1.0 - f.y));
+    }
+    return smoothstep(reach + 1.2, reach - 1.4, wp.z);
+  }
+`;
+
+export function buildSand(): SandBuild {
   const geo = new PlaneGeometry(500, 130, 96, 40);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position as BufferAttribute;
@@ -61,61 +81,58 @@ export function buildSand(): Mesh<PlaneGeometry, ShaderMaterial> {
     pos.setY(i, sandHeight(pos.getX(i), pos.getZ(i) + 40));
   }
   geo.computeVertexNormals();
-  const material = new ShaderMaterial({
-    uniforms: {
-      uTime: { value: 0 },
-      uDry: { value: new Color('#6b6250') },
-      uSky: { value: new Color('#2a5178') },
-    },
-    vertexShader: /* glsl */ `
-      varying vec3 vWorld;
-      varying vec3 vNormal;
-      void main() {
-        vec4 w = modelMatrix * vec4(position, 1.0);
-        vWorld = w.xyz;
-        vNormal = normalize(mat3(modelMatrix) * normal);
-        gl_Position = projectionMatrix * viewMatrix * w;
-      }
-    `,
-    fragmentShader: /* glsl */ `
-      uniform float uTime;
-      uniform vec3 uDry;
-      uniform vec3 uSky;
-      varying vec3 vWorld;
-      varying vec3 vNormal;
-      ${GLSL_NOISE}
-      ${GLSL_FRONTS}
-      void main() {
-        // Grain + gentle patchiness.
-        float grain = vnoise(vWorld.xz * 3.1) * 0.6 + vnoise(vWorld.xz * 13.0) * 0.4;
-        vec3 col = uDry * (0.8 + 0.4 * grain);
-        // Fake moonlit shading from the normal.
-        col *= 0.72 + 0.4 * max(vNormal.y, 0.0);
-        // Salt-and-pepper glitter of moonlit grains.
-        col += vec3(0.75, 0.85, 1.0) * step(0.982, vnoise(vWorld.xz * 57.0)) * 0.3;
 
-        // Wet band: from the waterline up to wherever the last swash reached.
-        float reach = -10.0;
-        for (int i = 0; i < 3; i++) {
-          vec2 f = waveFront(i, uTime, vWorld.x);
-          reach = max(reach, f.x + 1.2 * (1.0 - f.y));
-        }
-        float wet = smoothstep(reach + 1.2, reach - 1.4, vWorld.z);
-        col *= 1.0 - 0.42 * wet;
-        // Patchy sky sheen on the wet film; tamed at grazing angles so the
-        // whole strip never washes out into a flat blue slab.
-        vec3 viewDir = normalize(cameraPosition - vWorld);
-        float fres = pow(1.0 - max(dot(viewDir, vNormal), 0.0), 3.5);
-        float patches = smoothstep(0.35, 0.8, vnoise(vWorld.xz * 1.3));
-        col += uSky * min(fres, 0.55) * wet * patches * 0.6;
-        gl_FragColor = vec4(col, 1.0);
-      }
-    `,
-  });
+  const maps = bakeSandTextures();
+  for (const tex of [maps.map, maps.normalMap, maps.roughnessMap]) {
+    tex.repeat.set(50, 13);
+    // Break the mirrored-wrap symmetry (visible as concentric arcs otherwise).
+    tex.center.set(0.5, 0.5);
+    tex.rotation = 0.6;
+  }
+  const timeUniform = { value: 0 };
+  const material = new MeshStandardMaterial({ ...maps, roughness: 1, metalness: 0 });
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = timeUniform;
+    shader.uniforms.uSkySheen = { value: new Color('#2a5178') };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWetWorldPos;')
+      .replace(
+        '#include <worldpos_vertex>',
+        '#include <worldpos_vertex>\nvWetWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+        uniform float uTime;
+        uniform vec3 uSkySheen;
+        varying vec3 vWetWorldPos;
+        ${GLSL_NOISE}
+        ${GLSL_FRONTS}
+        ${GLSL_WET}`,
+      )
+      .replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+        diffuseColor.rgb *= 1.0 - 0.45 * wetFactor(vWetWorldPos, uTime);`,
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        {
+          vec3 sheenViewDir = normalize(vViewPosition);
+          float fres = pow(1.0 - max(dot(sheenViewDir, normal), 0.0), 3.5);
+          float patches = smoothstep(0.35, 0.8, vnoise(vWetWorldPos.xz * 1.3));
+          totalEmissiveRadiance +=
+            uSkySheen * min(fres, 0.55) * wetFactor(vWetWorldPos, uTime) * patches * 0.4;
+        }`,
+      );
+  };
+
   const mesh = new Mesh(geo, material);
   mesh.position.z = 40; // world z in [-25, 105]
   mesh.name = 'sand';
-  return mesh;
+  return { mesh, timeUniform };
 }
 
 /** Transparent surf strip laid over the water/sand seam. */

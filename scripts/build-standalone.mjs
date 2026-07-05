@@ -12,8 +12,10 @@ const dist = join(root, 'dist');
 const dataDir = join(root, 'public', 'data');
 
 const assetDir = join(dist, 'assets');
-const jsFile = readdirSync(assetDir).find((f) => f.endsWith('.js'));
-if (!jsFile) throw new Error('No JS bundle in dist/assets — run `npm run build` first.');
+// The entry chunk only — lazy chunks (e.g. the optional HDRI) are skipped;
+// their dynamic imports fail gracefully in the standalone build.
+const jsFile = readdirSync(assetDir).find((f) => f.startsWith('index-') && f.endsWith('.js'));
+if (!jsFile) throw new Error('No entry bundle in dist/assets — run `npm run build` first.');
 let bundle = readFileSync(join(assetDir, jsFile), 'utf8');
 // </script> inside string literals would terminate the inline script tag.
 bundle = bundle.replaceAll('</script>', '<\\/script>');

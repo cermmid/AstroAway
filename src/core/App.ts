@@ -1,4 +1,10 @@
-import { Group, PerspectiveCamera, Vector3, WebGLRenderer } from 'three';
+import {
+  ACESFilmicToneMapping,
+  Group,
+  PerspectiveCamera,
+  Vector3,
+  WebGLRenderer,
+} from 'three';
 import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { altAzToVector3, raDecToAltAz } from '../astro/coords';
 import {
@@ -14,12 +20,15 @@ import { DesktopControls } from '../input/DesktopControls';
 import { InputSystem } from '../input/InputSystem';
 import { XRControls } from '../input/XRControls';
 import { BeachScene } from '../scenes/BeachScene';
+import { PreviewScene } from '../scenes/PreviewScene';
 import { TravelScene } from '../scenes/TravelScene';
 import { WorldScene } from '../scenes/WorldScene';
 import { StarCatalog } from '../sky/StarCatalog';
 import { STAR_SPHERE_RADIUS } from '../sky/StarField';
 import { Hud } from '../ui/Hud';
 import { markAppReady, registerDebug } from './debug';
+import { loadNightEnvironment } from './environment';
+import { PostFX } from './PostFX';
 import { SceneManager } from './SceneManager';
 
 const DEG = Math.PI / 180;
@@ -48,6 +57,8 @@ export class App {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.xr.enabled = true;
+    renderer.toneMapping = ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
     document.body.appendChild(renderer.domElement);
 
     const camera = new PerspectiveCamera(
@@ -61,10 +72,12 @@ export class App {
     const cameraRig = new Group();
     cameraRig.add(camera);
 
+    let postfx: PostFX | null = null;
     window.addEventListener('resize', () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
+      postfx?.setSize(window.innerWidth, window.innerHeight);
     });
 
     // ?yaw= (compass azimuth) and ?pitch= aim the initial view — handy for
@@ -108,9 +121,15 @@ export class App {
 
     sceneManager.register(new BeachScene());
     sceneManager.register(new TravelScene());
+    sceneManager.register(new PreviewScene());
     for (const world of kb.getDestinations()) {
       sceneManager.register(new WorldScene(world));
     }
+
+    // Subtle night IBL so PBR materials reflect the sky (async, non-blocking).
+    void loadNightEnvironment(renderer).then((env) => {
+      if (env) sceneManager.applyEnvironment(env, 0.35);
+    });
 
     hud.setLocation(observer);
     if (observer.source !== 'url') {
@@ -178,12 +197,21 @@ export class App {
       xr.update();
       sceneManager.update(dt, t / 1000);
       const active = sceneManager.activeScene;
-      if (active) renderer.render(active.scene, camera);
+      if (!active) return;
+      if (renderer.xr.isPresenting) {
+        // No composer in XR: bloom is desktop-only (perf + WebXR support).
+        renderer.render(active.scene, camera);
+      } else {
+        if (!postfx) postfx = new PostFX(renderer, camera, active.scene);
+        postfx.setScene(active.scene);
+        postfx.render();
+      }
     });
 
     const requested = params.get('scene') ?? 'beach';
-    const sceneId =
-      requested === 'beach' || requested === 'travel' ? requested : `world:${requested}`;
+    const sceneId = ['beach', 'travel', 'preview'].includes(requested)
+      ? requested
+      : `world:${requested}`;
     await sceneManager.goTo(sceneId);
     markAppReady();
   }

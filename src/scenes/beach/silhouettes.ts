@@ -16,7 +16,9 @@ import {
   SRGBColorSpace,
   Vector3,
 } from 'three';
+import { bakeRockTextures } from '../../world-gen/bakeTextures';
 import { mulberry32, noise2 } from '../../world-gen/noise';
+import { buildPalm } from '../../world-gen/palm';
 import { sandHeight } from './shore';
 
 export function buildSilhouettes(): Group {
@@ -33,28 +35,17 @@ export function buildSilhouettes(): Group {
 
   group.add(buildRocks());
 
-  const palmTex = new CanvasTexture(makePalmTexture());
-  palmTex.colorSpace = SRGBColorSpace;
-  const palms: Array<[number, number, number, number, boolean]> = [
-    // [x, z, height, lean, mirrored] — one right overhead, the rest layering depth
-    [-8.5, -3, 11, 0.07, false],
-    [-15, 5, 8.5, -0.05, true],
-    [-26, -9, 7, 0.04, false],
+  // Real 3D palms replacing the old billboards.
+  const palms: Array<[number, number, number, number]> = [
+    // [x, z, height, seed] — one right overhead, the rest layering depth
+    [-8.5, -3, 9.5, 101],
+    [-15, 5, 7.5, 202],
+    [-26, -9, 6.5, 303],
   ];
-  for (const [x, z, h, lean, mirror] of palms) {
-    const mat = new MeshBasicMaterial({
-      map: palmTex,
-      transparent: true,
-      depthWrite: false,
-    });
-    const palm = new Mesh(new PlaneGeometry(h * 0.75, h), mat);
-    palm.position.set(x, h / 2 - 0.4, z);
-    palm.lookAt(0, palm.position.y, 0);
-    if (mirror) palm.scale.x = -1;
-    // Local-space lean; assigning .rotation.z after lookAt() can flip the
-    // plane when the quaternion's Euler form carries x/z = pi.
-    palm.rotateZ(lean);
-    palm.renderOrder = 3;
+  for (const [x, z, h, seed] of palms) {
+    const palm = buildPalm(seed, h);
+    palm.position.set(x, sandHeight(x, z) - 0.15, z);
+    palm.rotation.y = seed * 0.7;
     group.add(palm);
   }
   return group;
@@ -75,11 +66,12 @@ function buildRocks(): InstancedMesh {
     pos.setXYZ(i, v.x, v.y * 0.62, v.z); // squashed like surf-worn boulders
   }
   geo.computeVertexNormals();
+  const maps = bakeRockTextures();
+  for (const tex of [maps.map, maps.normalMap, maps.roughnessMap]) tex.repeat.set(2, 2);
   const material = new MeshStandardMaterial({
-    color: 0x3a4150,
-    roughness: 0.82,
+    ...maps,
+    roughness: 0.85,
     metalness: 0.05,
-    flatShading: true,
   });
   const placements: Array<[number, number, number]> = [
     // [x, z, radius] — a group standing in the surf to the right, loners on the sand
@@ -165,90 +157,3 @@ function makeCliffTexture(): HTMLCanvasElement {
   return canvas;
 }
 
-function makePalmTexture(): HTMLCanvasElement {
-  const W = 512;
-  const H = 680;
-  const canvas = document.createElement('canvas');
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#111e18'; // a hair above the sky so the crown still reads
-  const rand = mulberry32(97);
-
-  // Trunk: filled tapered polygon along a gentle curve; crown near (300, 150).
-  const spine = (t: number) => ({
-    x: 215 + 85 * t * t,
-    y: H - 10 - t * (H - 160),
-  });
-  ctx.beginPath();
-  const left: Array<[number, number]> = [];
-  const right: Array<[number, number]> = [];
-  for (let t = 0; t <= 1.001; t += 0.1) {
-    const p = spine(t);
-    const w = (14 - 9 * t) / 2;
-    left.push([p.x - w, p.y]);
-    right.push([p.x + w, p.y]);
-  }
-  ctx.moveTo(...left[0]);
-  for (const pt of left) ctx.lineTo(...pt);
-  for (const pt of right.reverse()) ctx.lineTo(...pt);
-  ctx.closePath();
-  ctx.fill();
-
-  // Fronds: closed, filled leaf shapes arching out and drooping at the tips.
-  const crown = spine(1);
-  for (let i = 0; i < 8; i++) {
-    const dirX = i < 4 ? -1 : 1; // four fronds to each side
-    const spreadIdx = i % 4;
-    const reach = 120 + spreadIdx * 32 + rand() * 25;
-    const lift = 62 - spreadIdx * 38 + rand() * 12; // top fronds rise, low droop
-    const tipX = crown.x + dirX * reach;
-    const tipY = crown.y - lift + spreadIdx * spreadIdx * 9;
-    // Upper edge arches high, lower edge sags — the fill between reads as a frond.
-    ctx.beginPath();
-    ctx.moveTo(crown.x, crown.y);
-    ctx.quadraticCurveTo(
-      crown.x + dirX * reach * 0.45,
-      crown.y - lift - 46,
-      tipX,
-      tipY,
-    );
-    ctx.quadraticCurveTo(
-      crown.x + dirX * reach * 0.5,
-      crown.y - lift * 0.25 + 26,
-      crown.x,
-      crown.y + 8,
-    );
-    ctx.closePath();
-    ctx.fill();
-    // Notches: bite into the frond edge so it silhouettes as leaflets.
-    ctx.globalCompositeOperation = 'destination-out';
-    for (let k = 0; k < 7; k++) {
-      const t = 0.25 + (k / 7) * 0.7;
-      const bx = crown.x + dirX * reach * t;
-      const by = crown.y - lift * Math.sin(t * Math.PI * 0.55) + spreadIdx * 6 + 14;
-      ctx.beginPath();
-      ctx.ellipse(bx, by + 16, 9 + rand() * 7, 15 + rand() * 9, dirX * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalCompositeOperation = 'source-over';
-  }
-  // Coconut cluster at the crown.
-  for (let i = 0; i < 3; i++) {
-    ctx.beginPath();
-    ctx.arc(crown.x - 8 + i * 9, crown.y + 6, 7, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // Faint moonlit rim along the trunk's lit side.
-  ctx.strokeStyle = 'rgba(150, 180, 220, 0.22)';
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  for (let t = 0; t <= 1.001; t += 0.05) {
-    const p = spine(t);
-    const w = (14 - 9 * t) / 2;
-    if (t === 0) ctx.moveTo(p.x - w, p.y);
-    else ctx.lineTo(p.x - w, p.y);
-  }
-  ctx.stroke();
-  return canvas;
-}

@@ -14,10 +14,10 @@ import {
   Scene,
 } from 'three';
 import { Vector3 } from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { altAzToVector3 } from '../astro/coords';
 import type { AppContext } from '../core/App';
 import { registerDebug } from '../core/debug';
+import { loadModel, type LoadedModel } from '../core/models';
 import { projectToScreen } from '../ui/project';
 import type { World } from '../data/schema';
 import { mulberry32 } from '../world-gen/noise';
@@ -41,6 +41,7 @@ export class WorldScene implements BaseScene {
   private motes: Points | null = null;
   private panel!: InfoPanel;
   private offSelect: (() => void) | null = null;
+  private loadedModels: LoadedModel[] = [];
 
   constructor(private world: World) {
     this.id = `world:${world.id}`;
@@ -53,12 +54,20 @@ export class WorldScene implements BaseScene {
     this.scene.fog = new FogExp2(new Color(p.atmosphere.fogColor), p.atmosphere.fogDensity);
     const { group: sky, sunDir } = buildAlienSky(p.sky);
     this.scene.add(sky);
-    this.scene.add(buildTerrain(p.terrain));
 
-    this.crystals = buildCrystals(p.structures, p.terrain);
-    if (this.crystals) {
-      this.baseEmissive = p.structures.emissiveIntensity ?? 0.5;
-      this.scene.add(this.crystals);
+    if (p.sceneFile) {
+      // Blender-authored world: the .glb replaces procedural ground/structures.
+      void loadModel(p.sceneFile).then((loaded) => {
+        this.loadedModels.push(loaded);
+        this.scene.add(loaded.object);
+      });
+    } else {
+      this.scene.add(buildTerrain(p.terrain));
+      this.crystals = buildCrystals(p.structures, p.terrain);
+      if (this.crystals) {
+        this.baseEmissive = p.structures.emissiveIntensity ?? 0.5;
+        this.scene.add(this.crystals);
+      }
     }
 
     if (p.atmosphere.particles === 'motes') {
@@ -78,18 +87,16 @@ export class WorldScene implements BaseScene {
     this.panel.mesh.lookAt(0, 1.6, 0);
     this.scene.add(this.panel.mesh);
 
-    // Optional user-supplied glTF/GLB models (public/models/).
-    if (this.world.scene.models?.length) {
-      const loader = new GLTFLoader();
-      for (const m of this.world.scene.models) {
-        loader.load(m.file, (gltf) => {
-          const obj = gltf.scene;
-          if (m.position) obj.position.set(...m.position);
-          if (m.rotationYDeg) obj.rotation.y = (m.rotationYDeg * Math.PI) / 180;
-          if (m.scale) obj.scale.setScalar(m.scale);
-          this.scene.add(obj);
-        });
-      }
+    // Optional user-supplied glTF/GLB props (public/models/), animations included.
+    for (const m of this.world.scene.models ?? []) {
+      void loadModel(m.file).then((loaded) => {
+        const obj = loaded.object;
+        if (m.position) obj.position.set(...m.position);
+        if (m.rotationYDeg) obj.rotation.y = (m.rotationYDeg * Math.PI) / 180;
+        if (m.scale) obj.scale.setScalar(m.scale);
+        this.loadedModels.push(loaded);
+        this.scene.add(obj);
+      });
     }
   }
 
@@ -124,9 +131,11 @@ export class WorldScene implements BaseScene {
   }
 
   update(dt: number, elapsed: number): void {
+    for (const m of this.loadedModels) m.mixer?.update(dt);
     if (this.crystals) {
       const mat = this.crystals.material as MeshStandardMaterial;
-      mat.emissiveIntensity = this.baseEmissive * (0.85 + 0.3 * Math.sin(elapsed * 1.7));
+      // Peaks past 1.0 so the bloom pass picks the crystals up.
+      mat.emissiveIntensity = this.baseEmissive * (1.3 + 0.7 * Math.sin(elapsed * 1.7));
     }
     if (this.motes) {
       const pos = this.motes.geometry.attributes.position;
