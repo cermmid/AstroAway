@@ -57,7 +57,15 @@
       "sunColor": "#ffa050",
       "sunElevationDeg": 9,
       "sunAzimuthDeg": 195,
-      "sunAngularDeg": 6
+      "sunAngularDeg": 6,
+      "gasGiant": {
+        "azimuthDeg": 320,
+        "elevationDeg": 26,
+        "angularDeg": 13,
+        "colorA": "#c9a0e8",
+        "colorB": "#4a3070",
+        "rings": true
+      }
     },
     "terrain": {
       "seed": 42,
@@ -79,7 +87,9 @@
     "atmosphere": {
       "fogColor": "#14304a",
       "fogDensity": 0.006,
-      "particles": "motes"
+      "particles": "motes",
+      "aurora": { "color": "#35e8a8" },
+      "veins": { "color": "#00e5ff" }
     },
     "models": [],
     "ambience": "drone"

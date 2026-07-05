@@ -22,6 +22,7 @@ import { projectToScreen } from '../ui/project';
 import type { World } from '../data/schema';
 import { mulberry32 } from '../world-gen/noise';
 import { buildAlienSky } from '../world-gen/alienSky';
+import { buildAurora, buildVeins, type Animated } from '../world-gen/atmosferics';
 import { buildCrystals } from '../world-gen/structures';
 import { buildTerrain } from '../world-gen/terrain';
 import { InfoPanel } from '../ui/InfoPanel';
@@ -42,6 +43,7 @@ export class WorldScene implements BaseScene {
   private panel!: InfoPanel;
   private offSelect: (() => void) | null = null;
   private loadedModels: LoadedModel[] = [];
+  private animated: Animated[] = [];
 
   constructor(private world: World) {
     this.id = `world:${world.id}`;
@@ -73,6 +75,16 @@ export class WorldScene implements BaseScene {
     if (p.atmosphere.particles === 'motes') {
       this.motes = buildMotes(new Color(p.palette.emissive), p.terrain.seed);
       this.scene.add(this.motes);
+    }
+    if (p.atmosphere.aurora) {
+      const aurora = buildAurora(p.atmosphere.aurora.color);
+      this.animated.push(aurora);
+      this.scene.add(aurora.object);
+    }
+    if (p.atmosphere.veins && !p.sceneFile) {
+      const veins = buildVeins(p.atmosphere.veins.color, p.terrain);
+      this.animated.push(veins);
+      this.scene.add(veins.object);
     }
 
     this.scene.add(
@@ -132,6 +144,7 @@ export class WorldScene implements BaseScene {
 
   update(dt: number, elapsed: number): void {
     for (const m of this.loadedModels) m.mixer?.update(dt);
+    for (const a of this.animated) a.timeUniform.value = elapsed;
     if (this.crystals) {
       const mat = this.crystals.material as MeshStandardMaterial;
       // Peaks past 1.0 so the bloom pass picks the crystals up.

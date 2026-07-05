@@ -20,7 +20,7 @@ export function terrainHeight(x: number, z: number, p: TerrainParams): number {
 
 /** Noise-displaced, vertex-colored ground plane; spawn area flattened. */
 export function buildTerrain(p: TerrainParams): Mesh {
-  const segments = 128;
+  const segments = 192;
   const geo = new PlaneGeometry(p.size, p.size, segments, segments);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position as BufferAttribute;

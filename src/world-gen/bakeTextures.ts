@@ -10,7 +10,7 @@ export interface BakedMaps {
   roughnessMap: CanvasTexture;
 }
 
-const SIZE = 512;
+const SIZE = 1024;
 
 function makeCanvas(fill: (img: ImageData) => void): HTMLCanvasElement {
   const canvas = document.createElement('canvas');

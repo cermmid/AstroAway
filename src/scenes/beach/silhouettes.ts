@@ -56,7 +56,7 @@ export function buildSilhouettes(): Group {
  * one InstancedMesh of noise-displaced icosahedrons lit by the scene lights.
  */
 function buildRocks(): InstancedMesh {
-  const geo = new IcosahedronGeometry(1, 2);
+  const geo = new IcosahedronGeometry(1, 3);
   const pos = geo.attributes.position as BufferAttribute;
   const v = new Vector3();
   for (let i = 0; i < pos.count; i++) {

@@ -67,7 +67,7 @@ export function buildPalm(seed: number, height: number): Group {
   }
   const curve = new CatmullRomCurve3(points);
   const trunk = new Mesh(
-    new TubeGeometry(curve, 12, 0.09 + height * 0.008, 7, false),
+    new TubeGeometry(curve, 20, 0.09 + height * 0.008, 10, false),
     getBarkMaterial(),
   );
   group.add(trunk);
@@ -75,11 +75,11 @@ export function buildPalm(seed: number, height: number): Group {
 
   // Crown of fronds, merged into one draw call.
   const frondGeos = [];
-  const n = 9;
+  const n = 11;
   for (let i = 0; i < n; i++) {
     const len = height * (0.42 + rand() * 0.14);
     const width = len * 0.24;
-    const geo = new PlaneGeometry(len, width, 8, 1);
+    const geo = new PlaneGeometry(len, width, 12, 2);
     geo.translate(len / 2, 0, 0);
     geo.rotateX(-Math.PI / 2); // frond lies in XZ, normal up
     const pos = geo.attributes.position;

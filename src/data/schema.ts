@@ -34,6 +34,15 @@ export interface SkyParams {
   sunElevationDeg?: number;
   sunAzimuthDeg?: number;
   sunAngularDeg?: number;
+  /** A banded gas giant hanging in the sky (optionally ringed). */
+  gasGiant?: {
+    azimuthDeg: number;
+    elevationDeg: number;
+    angularDeg: number;
+    colorA: string;
+    colorB: string;
+    rings?: boolean;
+  };
 }
 
 export interface TerrainParams {
@@ -59,6 +68,10 @@ export interface AtmosphereParams {
   fogColor: string;
   fogDensity: number;
   particles?: 'motes' | 'none';
+  /** Animated aurora curtains near the horizon. */
+  aurora?: { color: string };
+  /** Bioluminescent vein network glowing through the terrain. */
+  veins?: { color: string };
 }
 
 /** User-supplied glTF/GLB model dropped into public/models/. */
