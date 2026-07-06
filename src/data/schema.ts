@@ -65,9 +65,14 @@ export interface StructureParams {
   /**
    * A glTF/GLB model (public/models/) scattered across the terrain in place
    * of the procedural spires — instanced, so count copies cost a couple of
-   * draw calls. minH/maxH become the model's scale range.
+   * draw calls. minH/maxH become the model's height range (world units).
    */
   model?: string;
+  /**
+   * Up-axis of the model. Blender exports are often 'z' (the tall axis lies
+   * flat in three.js's Y-up world); 'z' stands it upright. Default 'y'.
+   */
+  modelUpAxis?: 'y' | 'z';
 }
 
 export interface AtmosphereParams {

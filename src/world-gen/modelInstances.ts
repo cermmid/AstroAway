@@ -5,10 +5,13 @@
 import {
   Box3,
   BufferGeometry,
+  CanvasTexture,
+  CircleGeometry,
   Color,
   Group,
   InstancedMesh,
   Matrix4,
+  MeshBasicMaterial,
   Mesh,
   MeshStandardMaterial,
   Quaternion,
@@ -55,9 +58,15 @@ export async function buildModelClusters(
     parts.push({ geometry: geo, material: mat.clone() });
   });
 
-  // Normalise so the model's base sits at y=0, it's centred in x/z, and its
-  // footprint is one unit — so a placement scale of N gives an ~N-wide
-  // outcrop regardless of the source model's native units.
+  // Stand up Z-up (Blender) exports so their tall axis points up in world.
+  if (s.modelUpAxis === 'z') {
+    const rot = new Matrix4().makeRotationX(-Math.PI / 2);
+    for (const p of parts) p.geometry.applyMatrix4(rot);
+  }
+
+  // Normalise so the model's base sits at y=0, it's centred in x/z, and it's
+  // one unit tall — so a placement scale of N gives an N-tall formation
+  // regardless of the source model's native units.
   const box = new Box3();
   for (const p of parts) {
     p.geometry.computeBoundingBox();
@@ -65,9 +74,9 @@ export async function buildModelClusters(
   }
   const size = box.getSize(new Vector3());
   const center = box.getCenter(new Vector3());
-  const footprint = Math.max(size.x, size.z);
+  const height = size.y || Math.max(size.x, size.z);
   const unit = new Matrix4().makeTranslation(-center.x, -box.min.y, -center.z);
-  unit.premultiply(new Matrix4().makeScale(1 / footprint, 1 / footprint, 1 / footprint));
+  unit.premultiply(new Matrix4().makeScale(1 / height, 1 / height, 1 / height));
   for (const p of parts) p.geometry.applyMatrix4(unit);
 
   // Seeded placements (same distribution as the procedural spires).
@@ -105,9 +114,10 @@ export async function buildModelClusters(
       const t = rand() * rand();
       h = s.minH + t * (s.maxH - s.minH);
     }
-    pos.set(x, terrainHeight(x, z, terrain) - 0.15 * h, z);
+    // Sink the base slightly so it looks planted, not floating.
+    pos.set(x, terrainHeight(x, z, terrain) - 0.06 * h, z);
     tiltAxis.set(rand() - 0.5, 0, rand() - 0.5).normalize();
-    q.setFromAxisAngle(tiltAxis, (rand() - 0.5) * 0.35);
+    q.setFromAxisAngle(tiltAxis, (rand() - 0.5) * 0.3);
     q.multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), rand() * Math.PI * 2));
     scl.setScalar(h);
     matrices.push(m.clone().compose(pos, q, scl));
@@ -139,5 +149,59 @@ export async function buildModelClusters(
     inst.frustumCulled = false;
     group.add(inst);
   }
+
+  // Cheap contact shadows: a soft dark disc under each crystal so it reads as
+  // planted rather than floating (no real shadow maps on Quest).
+  group.add(buildContactShadows(matrices, terrain));
+
   return { group, glowMaterials, baseEmissive, placements };
+}
+
+let shadowTexture: CanvasTexture | null = null;
+function getShadowTexture(): CanvasTexture {
+  if (shadowTexture) return shadowTexture;
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const ctx = c.getContext('2d')!;
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(0,0,0,0.55)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  shadowTexture = new CanvasTexture(c);
+  return shadowTexture;
+}
+
+function buildContactShadows(matrices: Matrix4[], terrain: TerrainParams): InstancedMesh {
+  const geo = new CircleGeometry(1, 20);
+  geo.rotateX(-Math.PI / 2);
+  const mesh = new InstancedMesh(
+    geo,
+    new MeshBasicMaterial({
+      map: getShadowTexture(),
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.9,
+    }),
+    matrices.length,
+  );
+  const pos = new Vector3();
+  const q = new Quaternion();
+  const scl = new Vector3();
+  const m = new Matrix4();
+  for (let i = 0; i < matrices.length; i++) {
+    matrices[i].decompose(pos, q, scl);
+    const r = scl.y * 0.5; // footprint scales with crystal size
+    m.compose(
+      new Vector3(pos.x, terrainHeight(pos.x, pos.z, terrain) + 0.05, pos.z),
+      new Quaternion(),
+      new Vector3(r, 1, r),
+    );
+    mesh.setMatrixAt(i, m);
+  }
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.renderOrder = 1;
+  mesh.frustumCulled = false;
+  return mesh;
 }

@@ -77,13 +77,14 @@
     },
     "structures": {
       "kind": "crystals",
-      "count": 95,
-      "minH": 1.5,
-      "maxH": 6,
+      "count": 85,
+      "minH": 2.5,
+      "maxH": 9,
       "color": "#2a4a7a",
       "emissive": "#00e5ff",
-      "emissiveIntensity": 1.1,
-      "model": "models/crystal.glb"
+      "emissiveIntensity": 1.6,
+      "model": "models/crystal.glb",
+      "modelUpAxis": "z"
     },
     "atmosphere": {
       "fogColor": "#14304a",

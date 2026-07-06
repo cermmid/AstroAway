@@ -28,6 +28,7 @@ export class PreviewScene implements BaseScene {
   private ctx!: AppContext;
   private current: LoadedModel | null = null;
   private holder = new Group();
+  private debugRotX = 0;
 
   init(ctx: AppContext): void {
     this.ctx = ctx;
@@ -53,6 +54,8 @@ export class PreviewScene implements BaseScene {
 
     const fromUrl = this.ctx.params.get('model');
     if (fromUrl) void this.show(fromUrl);
+    // Optional debug rotation (degrees about X) to test up-axis conventions.
+    this.debugRotX = parseFloat(this.ctx.params.get('rotx') ?? '0') || 0;
 
     window.addEventListener('dragover', (e) => e.preventDefault());
     window.addEventListener('drop', (e) => {
@@ -99,6 +102,7 @@ export class PreviewScene implements BaseScene {
       const loaded = await loadModel(url);
       this.holder.clear();
       this.current = loaded;
+      if (this.debugRotX) loaded.object.rotation.x = (this.debugRotX * Math.PI) / 180;
       // Auto-frame: keep oversized scenes graspable, lift sunk pivots.
       const box = new Box3().setFromObject(loaded.object);
       const size = box.getSize(new Vector3());
