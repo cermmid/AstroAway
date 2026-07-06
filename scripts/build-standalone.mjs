@@ -29,6 +29,16 @@ const embedJson = {
 };
 const starsB64 = readFileSync(join(dataDir, 'stars.bin')).toString('base64');
 
+// Inline any .glb models referenced by worlds so GLTFLoader (which fetches
+// via XHR, bypassing the fetch shim) can load them from Blob URLs.
+const modelsDir = join(root, 'public', 'models');
+const inlineModels = {};
+for (const file of readdirSync(modelsDir)) {
+  if (file.endsWith('.glb') && !file.startsWith('_')) {
+    inlineModels[`models/${file}`] = readFileSync(join(modelsDir, file)).toString('base64');
+  }
+}
+
 // Reuse the styles from the real index.html so the HUD looks identical.
 const indexHtml = readFileSync(join(root, 'index.html'), 'utf8');
 const style = indexHtml.match(/<style>[\s\S]*?<\/style>/)?.[0] ?? '';
@@ -39,6 +49,7 @@ ${style}
   (function () {
     var EMBED_JSON = ${JSON.stringify(embedJson)};
     var STARS_B64 = ${JSON.stringify(starsB64)};
+    window.__INLINE_MODELS__ = ${JSON.stringify(inlineModels)};
     var origFetch = window.fetch.bind(window);
     window.fetch = function (url, opts) {
       var key = String(url);

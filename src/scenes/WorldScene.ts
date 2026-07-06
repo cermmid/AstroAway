@@ -6,7 +6,6 @@ import {
   Float32BufferAttribute,
   FogExp2,
   HemisphereLight,
-  InstancedMesh,
   MeshStandardMaterial,
   Points,
   PointsMaterial,
@@ -23,6 +22,7 @@ import type { World } from '../data/schema';
 import { mulberry32 } from '../world-gen/noise';
 import { buildAlienSky } from '../world-gen/alienSky';
 import { buildAurora, buildVeins, type Animated } from '../world-gen/atmosferics';
+import { buildModelClusters } from '../world-gen/modelInstances';
 import { buildCrystals } from '../world-gen/structures';
 import { buildTerrain } from '../world-gen/terrain';
 import { InfoPanel } from '../ui/InfoPanel';
@@ -37,7 +37,7 @@ export class WorldScene implements BaseScene {
   readonly scene = new Scene();
 
   private ctx!: AppContext;
-  private crystals: InstancedMesh | null = null;
+  private glowMaterials: MeshStandardMaterial[] = [];
   private baseEmissive = 0.5;
   private motes: Points | null = null;
   private panel!: InfoPanel;
@@ -65,10 +65,20 @@ export class WorldScene implements BaseScene {
       });
     } else {
       this.scene.add(buildTerrain(p.terrain));
-      this.crystals = buildCrystals(p.structures, p.terrain);
-      if (this.crystals) {
-        this.baseEmissive = p.structures.emissiveIntensity ?? 0.5;
-        this.scene.add(this.crystals);
+      if (p.structures.model) {
+        // User-supplied crystal asset, instanced across the terrain.
+        void buildModelClusters(p.structures.model, p.structures, p.terrain).then((c) => {
+          this.glowMaterials.push(...c.glowMaterials);
+          this.baseEmissive = c.baseEmissive;
+          this.scene.add(c.group);
+        });
+      } else {
+        const crystals = buildCrystals(p.structures, p.terrain);
+        if (crystals) {
+          this.baseEmissive = p.structures.emissiveIntensity ?? 0.5;
+          this.glowMaterials.push(crystals.material as MeshStandardMaterial);
+          this.scene.add(crystals);
+        }
       }
     }
 
@@ -145,11 +155,9 @@ export class WorldScene implements BaseScene {
   update(dt: number, elapsed: number): void {
     for (const m of this.loadedModels) m.mixer?.update(dt);
     for (const a of this.animated) a.timeUniform.value = elapsed;
-    if (this.crystals) {
-      const mat = this.crystals.material as MeshStandardMaterial;
-      // Peaks past 1.0 so the bloom pass picks the crystals up.
-      mat.emissiveIntensity = this.baseEmissive * (1.3 + 0.7 * Math.sin(elapsed * 1.7));
-    }
+    // Peaks past 1.0 so the bloom pass picks the crystals up.
+    const glow = this.baseEmissive * (1.3 + 0.7 * Math.sin(elapsed * 1.7));
+    for (const mat of this.glowMaterials) mat.emissiveIntensity = glow;
     if (this.motes) {
       const pos = this.motes.geometry.attributes.position;
       for (let i = 0; i < pos.count; i++) {

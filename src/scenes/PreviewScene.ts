@@ -67,6 +67,31 @@ export class PreviewScene implements BaseScene {
       loaded: this.current !== null,
       animated: this.current?.mixer !== null && this.current !== null,
     }));
+    registerDebug('inspectModel', () => {
+      if (!this.current) return null;
+      const box = new Box3().setFromObject(this.current.object);
+      const size = box.getSize(new Vector3());
+      let tris = 0;
+      let meshes = 0;
+      const mats = new Set<string>();
+      this.current.object.traverse((o) => {
+        const mesh = o as unknown as { isMesh?: boolean; geometry?: { index?: { count: number } | null; attributes: { position: { count: number } } }; material?: { type: string } | { type: string }[] };
+        if (mesh.isMesh && mesh.geometry) {
+          meshes++;
+          const g = mesh.geometry;
+          tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
+          const m = mesh.material;
+          if (Array.isArray(m)) m.forEach((x) => mats.add(x.type));
+          else if (m) mats.add(m.type);
+        }
+      });
+      return {
+        size: [size.x, size.y, size.z].map((n) => +n.toFixed(2)),
+        triangles: Math.round(tris),
+        meshes,
+        materials: [...mats],
+      };
+    });
   }
 
   private async show(url: string): Promise<void> {

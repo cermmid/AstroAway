@@ -62,6 +62,12 @@ export interface StructureParams {
   color?: string;
   emissive?: string;
   emissiveIntensity?: number;
+  /**
+   * A glTF/GLB model (public/models/) scattered across the terrain in place
+   * of the procedural spires — instanced, so count copies cost a couple of
+   * draw calls. minH/maxH become the model's scale range.
+   */
+  model?: string;
 }
 
 export interface AtmosphereParams {

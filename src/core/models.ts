@@ -1,5 +1,6 @@
 import { AnimationMixer, Group } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { resolveModelUrl } from './assetUrls';
 
 export interface LoadedModel {
   object: Group;
@@ -15,7 +16,7 @@ const loader = new GLTFLoader();
  * Callers must advance mixers in their update loop.
  */
 export async function loadModel(url: string): Promise<LoadedModel> {
-  const gltf = await loader.loadAsync(url);
+  const gltf = await loader.loadAsync(resolveModelUrl(url));
   const object = gltf.scene;
   let mixer: AnimationMixer | null = null;
   if (gltf.animations.length > 0) {
