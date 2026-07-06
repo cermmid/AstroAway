@@ -13,6 +13,16 @@ declare global {
   }
 }
 
+// In the single-file build, GLTFLoader decodes a GLB's embedded textures into
+// blob: URLs and loads them via ImageBitmapLoader, which uses fetch() —
+// blocked by the artifact CSP (connect-src 'none'). Disabling createImageBitmap
+// forces the <img src=blob> path instead, which is governed by img-src blob:
+// (allowed). Only done when models are inlined (i.e. the standalone build);
+// nothing else there relies on createImageBitmap.
+if (typeof window !== 'undefined' && window.__INLINE_MODELS__) {
+  (window as unknown as { createImageBitmap?: unknown }).createImageBitmap = undefined;
+}
+
 const loader = new GLTFLoader();
 
 export async function loadGLTF(url: string): Promise<GLTF> {

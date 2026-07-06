@@ -107,12 +107,12 @@ export class WorldScene implements BaseScene {
       this.scene.add(veins.object);
     }
 
-    // A touch brighter so surfaces read even when IBL is unavailable
-    // (e.g. the artifact's CSP blocks the HDRI fetch).
+    // Bright enough that unlit (non-emissive) surfaces read even when IBL is
+    // unavailable (e.g. the artifact's CSP blocks the HDRI fetch).
     this.scene.add(
-      new HemisphereLight(new Color(p.sky.horizon), new Color(p.terrain.color), 1.05),
+      new HemisphereLight(new Color(p.sky.horizon), new Color(p.terrain.color), 1.6),
     );
-    const sun = new DirectionalLight(new Color(p.sky.sunColor ?? '#ffffff'), 1.0);
+    const sun = new DirectionalLight(new Color(p.sky.sunColor ?? '#ffffff'), 1.5);
     sun.position.copy(altAzToVector3(sunDir[0], sunDir[1]).multiplyScalar(120));
     this.scene.add(sun);
 

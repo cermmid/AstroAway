@@ -128,14 +128,12 @@ export async function buildModelClusters(
       const t = rand() * rand();
       h = s.minH + t * (s.maxH - s.minH);
     }
-    // The model is a flat-ish crystal (face up). Tilt it strongly so it juts
-    // out of the ground like a shard with its textured face visible at eye
-    // level, then spin randomly around vertical. Sink the base into terrain.
-    const lean = 0.7 + rand() * 0.6; // ~40-75 deg from horizontal
+    // Native upright orientation with only a slight random lean and a random
+    // spin around vertical, so the crystal stands as designed (not on its side).
     tiltAxis.set(rand() - 0.5, 0, rand() - 0.5).normalize();
     q.setFromAxisAngle(new Vector3(0, 1, 0), rand() * Math.PI * 2);
-    q.premultiply(new Quaternion().setFromAxisAngle(tiltAxis, lean));
-    pos.set(x, terrainHeight(x, z, terrain) - 0.1 * h, z);
+    q.premultiply(new Quaternion().setFromAxisAngle(tiltAxis, (rand() - 0.5) * 0.25));
+    pos.set(x, terrainHeight(x, z, terrain) - 0.08 * h, z);
     scl.setScalar(h);
     matrices.push(m.clone().compose(pos, q, scl));
     placements.push(pos.clone());
@@ -149,11 +147,16 @@ export async function buildModelClusters(
     // texture (emissiveMap = the colour map) so the crystal reads even when
     // IBL is unavailable, without flattening the surface into solid glow.
     const mat = part.material;
-    if (mat.map) {
+    if (baseEmissive > 0 && mat.map) {
       mat.emissiveMap = mat.map;
       mat.emissive = new Color(0xffffff);
       mat.emissiveIntensity = baseEmissive;
       glowMaterials.push(mat);
+    } else {
+      // No glow: kill any emissive baked into the model's own materials
+      // (e.g. this asset's Stone material ships with emissive white).
+      mat.emissive = new Color(0x000000);
+      mat.emissiveIntensity = 0;
     }
     const inst = new InstancedMesh(part.geometry, mat, matrices.length);
     matrices.forEach((m2, i) => inst.setMatrixAt(i, m2));

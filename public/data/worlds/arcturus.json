@@ -82,7 +82,7 @@
       "maxH": 7,
       "color": "#2a4a7a",
       "emissive": "#00e5ff",
-      "emissiveIntensity": 1.5,
+      "emissiveIntensity": 0,
       "model": "models/crystal.glb"
     },
     "atmosphere": {
