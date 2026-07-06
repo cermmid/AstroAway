@@ -79,12 +79,11 @@
       "kind": "crystals",
       "count": 85,
       "minH": 2.5,
-      "maxH": 9,
+      "maxH": 7,
       "color": "#2a4a7a",
       "emissive": "#00e5ff",
-      "emissiveIntensity": 0.9,
-      "model": "models/crystal.glb",
-      "modelUpAxis": "z"
+      "emissiveIntensity": 1.5,
+      "model": "models/crystal.glb"
     },
     "atmosphere": {
       "fogColor": "#14304a",

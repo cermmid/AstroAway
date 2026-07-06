@@ -45,6 +45,7 @@ export class WorldScene implements BaseScene {
   private loadedModels: LoadedModel[] = [];
   private animated: Animated[] = [];
   private modelStatus = 'none';
+  private heroPositions: Vector3[] = [];
 
   constructor(private world: World) {
     this.id = `world:${world.id}`;
@@ -74,6 +75,7 @@ export class WorldScene implements BaseScene {
             this.baseEmissive = c.baseEmissive;
             this.scene.add(c.group);
             this.modelStatus = `loaded:${c.placements.length}`;
+            this.heroPositions = c.placements.slice(0, 4);
           },
           (err) => {
             this.modelStatus = `error:${err?.message ?? err}`;
@@ -148,6 +150,19 @@ export class WorldScene implements BaseScene {
       return world ? projectToScreen(world, this.ctx.camera) : null;
     });
     registerDebug('worldInfo', () => ({ modelStatus: this.modelStatus }));
+    // Aim the view at a hero crystal (debug/framing): stand a few metres away
+    // and look at it.
+    registerDebug('aimHero', (i: number) => {
+      const target = this.heroPositions[i];
+      if (!target) return false;
+      const rig = this.ctx.cameraRig;
+      rig.position.set(target.x * 0.55, 0, target.z * 0.55 + 3);
+      const eye = new Vector3(rig.position.x, 1.6, rig.position.z);
+      const to = new Vector3(target.x, target.y + 1.5, target.z).sub(eye);
+      rig.rotation.y = Math.atan2(to.x, to.z) + Math.PI;
+      this.ctx.camera.rotation.x = Math.atan2(to.y, Math.hypot(to.x, to.z));
+      return true;
+    });
   }
 
   exit(): void {

@@ -55,15 +55,32 @@ export async function buildModelClusters(
     parts.push({ geometry: geo, material: mat.clone() });
   });
 
-  // Stand up Z-up (Blender) exports so their tall axis points up in world.
+  // Optional up-axis correction for Z-up (Blender) exports. Most models
+  // (including our crystal) are already Y-up and need none.
   if (s.modelUpAxis === 'z') {
     const rot = new Matrix4().makeRotationX(-Math.PI / 2);
     for (const p of parts) p.geometry.applyMatrix4(rot);
   }
 
-  // Normalise so the model's base sits at y=0, it's centred in x/z, and it's
-  // one unit tall — so a placement scale of N gives an N-tall formation
-  // regardless of the source model's native units.
+  // Drop flat display bases (a thin wide slab the crystal sits on): they
+  // dominate the bounding box and turn into giant plates when scaled up.
+  // Keep only the chunky part(s) — unless that would drop everything.
+  if (parts.length > 1) {
+    const chunky = parts.filter((p) => {
+      p.geometry.computeBoundingBox();
+      const sz = p.geometry.boundingBox!.getSize(new Vector3());
+      return sz.y >= 0.22 * Math.max(sz.x, sz.z);
+    });
+    if (chunky.length > 0 && chunky.length < parts.length) {
+      parts.length = 0;
+      parts.push(...chunky);
+    }
+  }
+
+  // Normalise so the model's base sits at y=0, it's centred in x/z, and its
+  // largest extent is one unit — preserving the model's real proportions so
+  // a placement scale of N gives an ~N-across formation (a flat crystal stays
+  // flat, a tall one stays tall).
   const box = new Box3();
   for (const p of parts) {
     p.geometry.computeBoundingBox();
@@ -71,9 +88,9 @@ export async function buildModelClusters(
   }
   const size = box.getSize(new Vector3());
   const center = box.getCenter(new Vector3());
-  const height = size.y || Math.max(size.x, size.z);
+  const maxDim = Math.max(size.x, size.y, size.z);
   const unit = new Matrix4().makeTranslation(-center.x, -box.min.y, -center.z);
-  unit.premultiply(new Matrix4().makeScale(1 / height, 1 / height, 1 / height));
+  unit.premultiply(new Matrix4().makeScale(1 / maxDim, 1 / maxDim, 1 / maxDim));
   for (const p of parts) p.geometry.applyMatrix4(unit);
 
   // Seeded placements (same distribution as the procedural spires).
@@ -111,37 +128,35 @@ export async function buildModelClusters(
       const t = rand() * rand();
       h = s.minH + t * (s.maxH - s.minH);
     }
-    // Sink the base slightly so it looks planted, not floating.
-    pos.set(x, terrainHeight(x, z, terrain) - 0.06 * h, z);
+    // The model is a flat-ish crystal (face up). Tilt it strongly so it juts
+    // out of the ground like a shard with its textured face visible at eye
+    // level, then spin randomly around vertical. Sink the base into terrain.
+    const lean = 0.7 + rand() * 0.6; // ~40-75 deg from horizontal
     tiltAxis.set(rand() - 0.5, 0, rand() - 0.5).normalize();
-    q.setFromAxisAngle(tiltAxis, (rand() - 0.5) * 0.3);
-    q.multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), rand() * Math.PI * 2));
+    q.setFromAxisAngle(new Vector3(0, 1, 0), rand() * Math.PI * 2);
+    q.premultiply(new Quaternion().setFromAxisAngle(tiltAxis, lean));
+    pos.set(x, terrainHeight(x, z, terrain) - 0.1 * h, z);
     scl.setScalar(h);
     matrices.push(m.clone().compose(pos, q, scl));
     placements.push(pos.clone());
   }
 
-  // The crystalline part = the brightest material; the rest is dark rock.
-  const lum = (mat: MeshStandardMaterial) => {
-    const c = mat.color;
-    return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-  };
-  const brightest = Math.max(...parts.map((p) => lum(p.material)));
-  const glowColor = new Color(s.emissive ?? '#00e5ff');
-
   const group = new Group();
   const glowMaterials: MeshStandardMaterial[] = [];
   const baseEmissive = s.emissiveIntensity ?? 0.5;
   for (const part of parts) {
-    if (lum(part.material) >= brightest - 0.001) {
-      // Tint the crystal toward the world's signature colour and make it glow.
-      part.material.color.lerp(glowColor, 0.5);
-      part.material.emissive = glowColor.clone();
-      part.material.emissiveIntensity = baseEmissive;
-      glowMaterials.push(part.material);
+    // Preserve the model's own textures; make it self-illuminate THROUGH its
+    // texture (emissiveMap = the colour map) so the crystal reads even when
+    // IBL is unavailable, without flattening the surface into solid glow.
+    const mat = part.material;
+    if (mat.map) {
+      mat.emissiveMap = mat.map;
+      mat.emissive = new Color(0xffffff);
+      mat.emissiveIntensity = baseEmissive;
+      glowMaterials.push(mat);
     }
-    const inst = new InstancedMesh(part.geometry, part.material, matrices.length);
-    matrices.forEach((mat, i) => inst.setMatrixAt(i, mat));
+    const inst = new InstancedMesh(part.geometry, mat, matrices.length);
+    matrices.forEach((m2, i) => inst.setMatrixAt(i, m2));
     inst.instanceMatrix.needsUpdate = true;
     inst.frustumCulled = false;
     group.add(inst);
