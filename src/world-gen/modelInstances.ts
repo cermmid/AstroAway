@@ -17,8 +17,7 @@ import {
   Quaternion,
   Vector3,
 } from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { resolveModelUrl } from '../core/assetUrls';
+import { loadGLTF } from '../core/gltf';
 import type { StructureParams, TerrainParams } from '../data/schema';
 import { mulberry32 } from './noise';
 import { terrainHeight } from './terrain';
@@ -34,14 +33,12 @@ export interface InstancedModel {
   placements: Vector3[];
 }
 
-const loader = new GLTFLoader();
-
 export async function buildModelClusters(
   url: string,
   s: StructureParams,
   terrain: TerrainParams,
 ): Promise<InstancedModel> {
-  const gltf = await loader.loadAsync(resolveModelUrl(url));
+  const gltf = await loadGLTF(url);
 
   // Collect every sub-mesh with its geometry baked into the model's root frame.
   gltf.scene.updateWorldMatrix(true, true);

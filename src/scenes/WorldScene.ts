@@ -44,6 +44,7 @@ export class WorldScene implements BaseScene {
   private offSelect: (() => void) | null = null;
   private loadedModels: LoadedModel[] = [];
   private animated: Animated[] = [];
+  private modelStatus = 'none';
 
   constructor(private world: World) {
     this.id = `world:${world.id}`;
@@ -67,11 +68,18 @@ export class WorldScene implements BaseScene {
       this.scene.add(buildTerrain(p.terrain));
       if (p.structures.model) {
         // User-supplied crystal asset, instanced across the terrain.
-        void buildModelClusters(p.structures.model, p.structures, p.terrain).then((c) => {
-          this.glowMaterials.push(...c.glowMaterials);
-          this.baseEmissive = c.baseEmissive;
-          this.scene.add(c.group);
-        });
+        buildModelClusters(p.structures.model, p.structures, p.terrain).then(
+          (c) => {
+            this.glowMaterials.push(...c.glowMaterials);
+            this.baseEmissive = c.baseEmissive;
+            this.scene.add(c.group);
+            this.modelStatus = `loaded:${c.placements.length}`;
+          },
+          (err) => {
+            this.modelStatus = `error:${err?.message ?? err}`;
+            console.error('Crystal model load failed:', err);
+          },
+        );
       } else {
         const crystals = buildCrystals(p.structures, p.terrain);
         if (crystals) {
@@ -97,8 +105,10 @@ export class WorldScene implements BaseScene {
       this.scene.add(veins.object);
     }
 
+    // A touch brighter so surfaces read even when IBL is unavailable
+    // (e.g. the artifact's CSP blocks the HDRI fetch).
     this.scene.add(
-      new HemisphereLight(new Color(p.sky.horizon), new Color(p.terrain.color), 0.75),
+      new HemisphereLight(new Color(p.sky.horizon), new Color(p.terrain.color), 1.05),
     );
     const sun = new DirectionalLight(new Color(p.sky.sunColor ?? '#ffffff'), 1.0);
     sun.position.copy(altAzToVector3(sunDir[0], sunDir[1]).multiplyScalar(120));
@@ -137,6 +147,7 @@ export class WorldScene implements BaseScene {
       const world = this.panel.buttonWorldPos(buttonId, new Vector3());
       return world ? projectToScreen(world, this.ctx.camera) : null;
     });
+    registerDebug('worldInfo', () => ({ modelStatus: this.modelStatus }));
   }
 
   exit(): void {
@@ -155,8 +166,8 @@ export class WorldScene implements BaseScene {
   update(dt: number, elapsed: number): void {
     for (const m of this.loadedModels) m.mixer?.update(dt);
     for (const a of this.animated) a.timeUniform.value = elapsed;
-    // Peaks past 1.0 so the bloom pass picks the crystals up.
-    const glow = this.baseEmissive * (1.3 + 0.7 * Math.sin(elapsed * 1.7));
+    // Gentle pulse; kept in a range that blooms without blowing out.
+    const glow = this.baseEmissive * (1.0 + 0.4 * Math.sin(elapsed * 1.7));
     for (const mat of this.glowMaterials) mat.emissiveIntensity = glow;
     if (this.motes) {
       const pos = this.motes.geometry.attributes.position;

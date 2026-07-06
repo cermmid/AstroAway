@@ -1,6 +1,5 @@
 import { AnimationMixer, Group } from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { resolveModelUrl } from './assetUrls';
+import { loadGLTF } from './gltf';
 
 export interface LoadedModel {
   object: Group;
@@ -8,15 +7,13 @@ export interface LoadedModel {
   mixer: AnimationMixer | null;
 }
 
-const loader = new GLTFLoader();
-
 /**
  * Shared glTF/GLB loading for user content (Blender exports): returns the
  * scene graph plus a running AnimationMixer when the file has clips.
  * Callers must advance mixers in their update loop.
  */
 export async function loadModel(url: string): Promise<LoadedModel> {
-  const gltf = await loader.loadAsync(resolveModelUrl(url));
+  const gltf = await loadGLTF(url);
   const object = gltf.scene;
   let mixer: AnimationMixer | null = null;
   if (gltf.animations.length > 0) {

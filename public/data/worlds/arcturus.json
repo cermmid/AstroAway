@@ -82,7 +82,7 @@
       "maxH": 9,
       "color": "#2a4a7a",
       "emissive": "#00e5ff",
-      "emissiveIntensity": 1.6,
+      "emissiveIntensity": 0.9,
       "model": "models/crystal.glb",
       "modelUpAxis": "z"
     },
